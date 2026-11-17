@@ -154,12 +154,10 @@ ATM-Project/
 │   └── admin.c
 │
 ├── docs/
-│   ├── DEVELOPMENT.md
-│   └── branches/
-│       ├── client-ui.md
-│       ├── server-ipc.md
-│       ├── file-locking.md
-│       └── signal-monitor.md
+│   ├── client-ui.md
+│   ├── server-ipc.md
+│   ├── file-locking.md
+│   └── signal-monitor.md
 │
 ├── README.md
 └── Makefile
