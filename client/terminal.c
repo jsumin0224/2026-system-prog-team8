@@ -100,7 +100,7 @@ static InputResult read_input(const char *label, char *buffer,
         struct termios mode = original;
         mode.c_lflag &= ~(ECHO | ECHONL);
 
-        if (single) {
+        if (single || hidden) {
             mode.c_lflag &= ~ICANON;
             mode.c_cc[VMIN] = 1;
             mode.c_cc[VTIME] = 0;
@@ -153,11 +153,29 @@ static InputResult read_input(const char *label, char *buffer,
         if (!tty && byte == '\r')
             continue;
 
+        if (hidden && (byte == 127 || byte == '\b')) {
+           if (length > 0) {
+                length--;
+                buffer[length] = '\0';
+
+                fputs("\b \b", stdout);
+                fflush(stdout);
+            }
+            continue;
+        }
+            
         /* 입력이 너무 길어도 다음 입력에 섞이지 않도록 줄 끝까지 읽습니다. */
-        if (byte == '\0' || length == capacity - 1)
+        if (byte == '\0' || length == capacity - 1){
             invalid = 1;
-        else
+        }
+        else{
             buffer[length++] = byte;
+            
+            if (hidden) {
+                putchar('*');
+                fflush(stdout);
+            }
+        }   
     }
 
     if (!single)
