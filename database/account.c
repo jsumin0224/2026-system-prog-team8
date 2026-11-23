@@ -13,12 +13,14 @@ int init_account_file() {
         return -1;
     }
 
-    // 샘플 계좌 2개 생성
-    Account sample1 = {"1001", "1234", "홍길동", 500000, 1};
-    Account sample2 = {"1002", "5678", "김철수", 300000, 1};
+    // 샘플 계좌 3개 생성
+    Account sample1 = {"1001", "1234", "짱구", 500000, 1};
+    Account sample2 = {"1002", "5678", "철수", 300000, 1};
+    Account sample3 = {"1003", "0000", "맹구", 200000, 1};
 
     write(fd, &sample1, sizeof(Account));
     write(fd, &sample2, sizeof(Account));
+    write(fd, &sample3, sizeof(Account));
 
     close(fd);
     return 0;
