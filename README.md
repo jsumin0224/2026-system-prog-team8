@@ -137,6 +137,7 @@ ATM-Project/
 │   └── terminal.h
 │
 ├── server/
+|   ├── atm_stub.c
 │   ├── server.c
 │   ├── ipc.c
 │   └── ipc.h
