@@ -1,0 +1,13 @@
+# Build artifacts
+*.o
+atm_stub_server
+atm_server
+
+# Runtime / test data & logs
+accounts.dat
+transactions.log
+
+# OS / editor temp files
+.DS_Store
+*.swp
+*~
