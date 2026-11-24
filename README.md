@@ -137,6 +137,7 @@ ATM-Project/
 │   └── terminal.h
 │
 ├── server/
+|   ├── atm_stub.c
 │   ├── server.c
 │   ├── ipc.c
 │   └── ipc.h
@@ -148,23 +149,21 @@ ATM-Project/
 │   └── transaction.c
 │
 ├── monitoring/
+|   ├── monitoring.h
 │   ├── signal_handler.c
 │   ├── timer.c
 │   ├── monitor.c
 │   └── admin.c
 │
 ├── docs/
-│   ├── DEVELOPMENT.md
-│   └── branches/
-│       ├── client-ui.md
-│       ├── server-ipc.md
-│       ├── file-locking.md
-│       └── signal-monitor.md
+│   ├── client-ui.md
+│   ├── server-ipc.md
+│   ├── file-locking.md
+│   └── signal-monitor.md
 │
 ├── README.md
 └── Makefile
 ```
-
 ※ 위 디렉터리와 파일명은 개발을 위한 초기 권장 구조이며, 실제 구현 상황에 따라 변경할 수 있습니다.
 
 ## 8. 개발 진행 상황
