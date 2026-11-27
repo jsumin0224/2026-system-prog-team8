@@ -56,8 +56,7 @@ int timer_is_timeout(void);
 void timer_clear_timeout(void);
 
 // admin.c 
-int admin_daemonize(void);
 void admin_render_dashboard(const char *log_path, const char *proc_filter);
-int admin_run_loop(const char *log_path, const char *proc_filter, int interval_sec, int daemon_mode);
+int admin_run_loop(const char *log_path, const char *proc_filter, int interval_sec);
 
 #endif
