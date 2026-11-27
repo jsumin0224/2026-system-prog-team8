@@ -1,49 +1,7 @@
 #include "monitoring.h"
 
-#include <fcntl.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
 #include <unistd.h>
-
-// 백그라운드 전환
-int admin_daemonize(void) {
-    pid_t pid = fork();
-    if (pid < 0) {
-        perror("fork");
-        return -1;
-    }
-    if (pid > 0) {
-        _exit(0);
-    }
-
-    pid = fork();
-    if (pid < 0) {
-        perror("second fork");
-        return -1;
-    }
-    if (pid > 0) {
-        _exit(0);
-    }
-
-    if (chdir("/") < 0) {
-        perror("chdir");
-        return -1;
-    }
-
-    int dev_null = open("/dev/null", O_RDWR);
-    if (dev_null >= 0) {
-        dup2(dev_null, STDIN_FILENO);
-        dup2(dev_null, STDOUT_FILENO);
-        dup2(dev_null, STDERR_FILENO);
-        if (dev_null > STDERR_FILENO) {
-            close(dev_null);
-        }
-    }
-
-    return 0;
-}
 
 // 관리자 tui
 void admin_render_dashboard(const char *log_path, const char *proc_filter) {
@@ -116,35 +74,19 @@ void admin_render_dashboard(const char *log_path, const char *proc_filter) {
     fflush(stdout);
 }
 
-// 주기 제어 루프 (기본 1초 주기, sig_should_exit() 감지 시 종료)
-int admin_run_loop(const char *log_path, const char *proc_filter, int interval_sec, int daemon_mode) {
+// 주기 갱신 루프 (기본 1초 주기, sig_should_exit() 감지 시 종료)
+int admin_run_loop(const char *log_path, const char *proc_filter, int interval_sec) {
     int period = (interval_sec > 0) ? interval_sec : 1;
 
-    if (daemon_mode) {
-        if (admin_daemonize() != 0) {
-            return -1;
-        }
-        if (sig_init() != 0) {
-            return -1;
-        }
-    }
-
     while (!sig_should_exit()) {
-        if (!daemon_mode) {
-            admin_render_dashboard(log_path, proc_filter);
-        } else {
-            log_stat_info_t st_info;
-            monitor_check_log(log_path, &st_info);
-        }
+        admin_render_dashboard(log_path, proc_filter);
 
         for (int s = 0; s < period && !sig_should_exit(); s++) {
             sleep(1);
         }
     }
 
-    if (!daemon_mode) {
-        printf("\n관리자 모니터링을 종료합니다.\n");
-    }
+    printf("\n관리자 모니터링을 종료합니다.\n");
     sig_cleanup_all();
     return 0;
 }
