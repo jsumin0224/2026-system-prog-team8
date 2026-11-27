@@ -7,8 +7,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* prompt()가 입력 시간 초과일 때 반환하는 값입니다. */
+#define PROMPT_TIMEOUT (-2)
+
 static int login(int req_fd, int resp_fd, Request *request);
 static int run_session(int req_fd, int resp_fd, Request *request);
+static int session_timeout(void);
 static int prompt(const char *label, char *buffer, size_t capacity, int hidden);
 static int read_amount(long *amount);
 static int call_server(int req_fd, int resp_fd,
@@ -30,7 +34,11 @@ void atm_run(int atm_id, int req_fd, int resp_fd)
         /* 1. 서버에서 로그인이 성공해야 거래 메뉴를 엽니다. */
         int result = login(req_fd, resp_fd, &request);
         if (result == 1) {
+            /* 로그인 후에만 자동 로그아웃 타이머를 켭니다. */
+            terminal_idle_enable(1);
             result = run_session(req_fd, resp_fd, &request);
+            terminal_idle_enable(0);
+
             if (result == 0)
                 puts("로그아웃했습니다.");
         }
@@ -56,14 +64,14 @@ static int login(int req_fd, int resp_fd, Request *request)
     int result = prompt("계좌번호 (0: 종료): ", request->acc_num,
                         sizeof request->acc_num, 0);
     if (result <= 0)
-        return result;
+        return result == PROMPT_TIMEOUT ? 0 : result;
     if (strcmp(request->acc_num, "0") == 0)
         return -1;
 
     result = prompt("비밀번호: ", request->password,
                     sizeof request->password, 1);
     if (result <= 0)
-        return result;
+        return result == PROMPT_TIMEOUT ? 0 : result;
     if (terminal_interrupted())
         return -1;
 
@@ -82,7 +90,14 @@ static int login(int req_fd, int resp_fd, Request *request)
     return 1;
 }
 
-/* 0은 로그아웃, -1은 ATM 종료입니다. */
+/* 자동 로그아웃 안내를 출력하고 1을 반환합니다. */
+static int session_timeout(void)
+{
+    puts("\n입력 시간이 초과되어 자동 로그아웃되었습니다.");
+    return 1;
+}
+
+/* 0은 로그아웃, 1은 자동 로그아웃, -1은 ATM 종료입니다. */
 static int run_session(int req_fd, int resp_fd, Request *request)
 {
     /* 5. 로그아웃이나 종료가 발생할 때까지 반복합니다. */
@@ -100,6 +115,8 @@ static int run_session(int req_fd, int resp_fd, Request *request)
         InputResult input = terminal_key("메뉴 선택: ", &key);
         putchar('\n');
 
+        if (input == INPUT_TIMEOUT)
+            return session_timeout();
         if (input == INPUT_ERROR)
             fputs("터미널 입력을 처리할 수 없습니다.\n", stderr);
         if (input != INPUT_OK)
@@ -132,6 +149,8 @@ static int run_session(int req_fd, int resp_fd, Request *request)
         if (request->op == OP_TRANSFER) {
             int result = prompt("받는 계좌번호: ", request->target_acc,
                                 sizeof request->target_acc, 0);
+            if (result == PROMPT_TIMEOUT)
+                return session_timeout();
             if (result < 0)
                 return -1;
             if (result == 0)
@@ -145,6 +164,8 @@ static int run_session(int req_fd, int resp_fd, Request *request)
 
         if (request->op != OP_BALANCE) {
             int result = read_amount(&request->amount);
+            if (result == PROMPT_TIMEOUT)
+                return session_timeout();
             if (result < 0)
                 return -1;
             if (result == 0)
@@ -162,11 +183,13 @@ static int run_session(int req_fd, int resp_fd, Request *request)
     return -1;
 }
 
-/* 1은 정상 입력, 0은 잘못된 입력, -1은 종료 또는 오류입니다. */
+/* 1은 정상 입력, 0은 잘못된 입력, -1은 종료 또는 오류, PROMPT_TIMEOUT은 시간 초과입니다. */
 static int prompt(const char *label, char *buffer, size_t capacity, int hidden)
 {
     InputResult result = terminal_line(label, buffer, capacity, hidden);
 
+    if (result == INPUT_TIMEOUT)
+        return PROMPT_TIMEOUT;
     if (result == INPUT_ERROR)
         fputs("터미널 입력을 처리할 수 없습니다.\n", stderr);
     if (result == INPUT_END || result == INPUT_ERROR)
