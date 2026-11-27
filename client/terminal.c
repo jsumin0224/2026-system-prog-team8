@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "terminal.h"
+#include "monitoring.h"
 
 #include <errno.h>
 #include <signal.h>
@@ -9,8 +10,12 @@
 #include <termios.h>
 #include <unistd.h>
 
+/* 로그인 후 이 시간(초) 동안 입력이 없으면 자동 로그아웃합니다. */
+#define IDLE_TIMEOUT_SEC 30
+
 static volatile sig_atomic_t interrupted;
 static sigset_t exit_signals;
+static int idle_enabled;
 
 static void on_signal(int signal_number)
 {
@@ -33,6 +38,10 @@ int terminal_init(void)
             return -1;
     }
 
+    /* SIGALRM 기반 자동 로그아웃 타이머 */
+    if (timer_init(IDLE_TIMEOUT_SEC) != 0)
+        return -1;
+
     return 0;
 }
 
@@ -41,10 +50,24 @@ int terminal_interrupted(void)
     return interrupted != 0;
 }
 
-/* 입력을 기다리는 중에 Ctrl+C가 들어오면 대기를 중단합니다. */
+void terminal_idle_enable(int enable)
+{
+    idle_enabled = enable;
+    if (enable) {
+        timer_reset();
+    } else {
+        alarm(0);
+        timer_clear_timeout();
+    }
+}
+
+/* 입력을 기다리는 중에 Ctrl+C나 타이머 만료가 들어오면 대기를 중단합니다. */
 static InputResult read_byte(char *byte, const sigset_t *wait_mask)
 {
     while (!interrupted) {
+        if (idle_enabled && timer_is_timeout())
+            return INPUT_TIMEOUT;
+
         fd_set readable;
         FD_ZERO(&readable);
         FD_SET(STDIN_FILENO, &readable);
@@ -60,8 +83,11 @@ static InputResult read_byte(char *byte, const sigset_t *wait_mask)
             return INPUT_END;
 
         ssize_t count = read(STDIN_FILENO, byte, 1);
-        if (count == 1)
+        if (count == 1) {
+            if (idle_enabled)
+                timer_reset();
             return INPUT_OK;
+        }
         if (count == 0)
             return INPUT_END;
         if (errno != EINTR)
@@ -89,6 +115,9 @@ static InputResult read_input(const char *label, char *buffer,
     /* 터미널 설정을 복구할 때까지 Ctrl+Z에 의한 중단을 미룹니다. */
     if (tty && (single || hidden))
         sigaddset(&blocked, SIGTSTP);
+
+    /* 타이머 신호는 pselect 안에서만 받도록 평소에는 막아 둡니다. */
+    sigaddset(&blocked, SIGALRM);
 
     if (sigprocmask(SIG_BLOCK, &blocked, &previous_mask) == -1)
         return INPUT_ERROR;
@@ -118,6 +147,10 @@ static InputResult read_input(const char *label, char *buffer,
     sigset_t wait_mask = previous_mask;
     if (changed)
         sigaddset(&wait_mask, SIGTSTP);
+
+    /* 입력 대기를 시작할 때마다 타이머를 새로 시작합니다. */
+    if (idle_enabled)
+        timer_reset();
 
     for (;;) {
         char byte;
@@ -154,7 +187,7 @@ static InputResult read_input(const char *label, char *buffer,
             continue;
 
         if (hidden && (byte == 127 || byte == '\b')) {
-           if (length > 0) {
+            if (length > 0) {
                 length--;
                 buffer[length] = '\0';
 
@@ -163,19 +196,18 @@ static InputResult read_input(const char *label, char *buffer,
             }
             continue;
         }
-            
+
         /* 입력이 너무 길어도 다음 입력에 섞이지 않도록 줄 끝까지 읽습니다. */
-        if (byte == '\0' || length == capacity - 1){
+        if (byte == '\0' || length == capacity - 1) {
             invalid = 1;
-        }
-        else{
+        } else {
             buffer[length++] = byte;
-            
+
             if (hidden) {
                 putchar('*');
                 fflush(stdout);
             }
-        }   
+        }
     }
 
     if (!single)
