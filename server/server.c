@@ -2,6 +2,7 @@
 #include "../database/account.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
@@ -75,13 +76,62 @@ static void close_atm(struct pollfd *p, int *resp_w)
     p->fd = -1;
 }
 
+/* ATM 자식 프로세스의 입출력을 지정한 터미널(tty)로 바꿉니다. */
+static int attach_tty(const char *path)
+{
+    int fd = open(path, O_RDWR);
+    if (fd < 0) {
+        fprintf(stderr, "server: cannot open %s: %s\n", path, strerror(errno));
+        return -1;
+    }
+    if (!isatty(fd)) {
+        fprintf(stderr, "server: %s is not a terminal\n", path);
+        close(fd);
+        return -1;
+    }
+
+    if (dup2(fd, STDIN_FILENO) < 0 ||
+        dup2(fd, STDOUT_FILENO) < 0 ||
+        dup2(fd, STDERR_FILENO) < 0) {
+        perror("dup2");
+        close(fd);
+        return -1;
+    }
+    if (fd > STDERR_FILENO)
+        close(fd);
+    return 0;
+}
+
+static void print_usage(const char *prog)
+{
+    fprintf(stderr,
+            "usage: %s [number of ATMs 1-%d]\n"
+            "       %s /dev/pts/N [/dev/pts/M ...]   (ATM마다 별도 터미널 사용)\n",
+            prog, MAX_ATM, prog);
+}
+
 int main(int argc, char **argv)
 {
-    int n = argc > 1 ? atoi(argv[1]) : 3;
-    if (n < 1 || n > MAX_ATM) {
-        fprintf(stderr, "usage: %s [number of ATMs 1-%d]\n", argv[0], MAX_ATM);
-        return 1;
+    const char *ttys[MAX_ATM] = { NULL };
+    int n;
+
+    /* 인자가 '/'로 시작하면 터미널 경로 목록, 아니면 ATM 개수입니다. */
+    if (argc > 1 && argv[1][0] == '/') {
+        n = argc - 1;
+        if (n > MAX_ATM) {
+            print_usage(argv[0]);
+            return 1;
+        }
+        for (int i = 0; i < n; i++)
+            ttys[i] = argv[i + 1];
+    } else {
+        n = argc > 1 ? atoi(argv[1]) : 3;
+        if (n < 1 || n > MAX_ATM) {
+            print_usage(argv[0]);
+            return 1;
+        }
     }
+
     if (init_account_file() < 0)
         return 1;
 
@@ -114,6 +164,11 @@ int main(int argc, char **argv)
             }
             close(req[0]);
             close(resp[1]);
+
+            /* 터미널 경로가 주어졌으면 이 ATM의 입출력을 그 터미널로 옮깁니다. */
+            if (ttys[i] != NULL && attach_tty(ttys[i]) < 0)
+                _exit(1);
+
             atm_run(i + 1, req[1], resp[0]);
             close(req[1]);
             close(resp[0]);
